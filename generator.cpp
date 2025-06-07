@@ -3,38 +3,67 @@
 #include <opencv2/highgui.hpp>
 #include <chrono>
 #include <pthread.h>
-#include <list>
+#include <queue>
 #include <unistd.h> 
 #include <filesystem>
-namespace fs = std::filesystem;
-
-#define NUM_THREADS 8
-#define MAX_FPS 50
-
-// Global variables and mutex
-int accumulatedImages = 0;
-int previousFPS = 0;
-int counter = 0;
-int frames = 0;
-int totalFrames = 0;
-std::chrono::system_clock::time_point start;
-
-//std::chrono::_V2::system_clock::time_point start;
-/*std::chrono::_V2::system_clock::time_point end;*/
-std::chrono::system_clock::time_point end;
-std::chrono::seconds duration;
-std::chrono::seconds globalDuration;
-int inputDuration;
-bool isTimerRunning = false;
-std::list<cv::Mat> imagesList;
-long long totalBytesWritten = 0;
-pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t counterMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t framesMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t listMutex = PTHREAD_MUTEX_INITIALIZER;
-
-
 /**
+ * @file generator.cpp
+ * @brief Generates random images and saves them to disk using multiple threads.
+ *
+ * This program generates random images of specified dimensions, counts the frames per second (FPS),
+ * and saves the images to a directory. It uses multithreading to handle image generation and saving concurrently.
+ *
+ * Usage: ./generator [time_unit] [duration] [threads_number]
+ * - time_unit: 's' for seconds, 'm' for minutes, 'h' for hours
+ * - duration: number of time units to run the program
+ * - threads_number: number of threads to use for image generation and saving (default is 3)
+ */
+
+/*Global variables
+*/
+  int accumulatedImages = 0; // Total frames generated
+  int counter = 0; // Counter for saved images
+  int frames = 0; // Frames generated in the last second
+  int totalFrames = 0; // Total frames generated during the program execution
+  bool isTimerRunning = false; // Timer status
+  bool isTimelimitReached = false; // Timer limit status
+
+  // Input parameters
+  int inputDuration; // Duration for which the program will run, (default 5 seconds)
+  int threadsNumber; // Number of threads to be used for image generation and saving
+
+  // Time variables
+  std::chrono::system_clock::time_point start; // Start time of the timer
+  std::chrono::system_clock::time_point end; // End time of the timer
+  std::chrono::seconds duration; // Duration of the last second of image generation
+  std::chrono::seconds nowTime; // Current time
+
+  // Image list to hold generated images
+  std::queue<cv::Mat> imagesList;
+
+/*Mutexes
+*/
+
+  pthread_mutex_t globalTimeMutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_t framesMutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_t listMutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_t counterMutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+struct imageProperties{
+  /**
+ * @brief Holds the properties of an image.
+ * 
+ * This structure defines the basic dimensions of an image, 
+ * including its width and height in pixels.
+ */
+  int width;
+  int height;
+};
+
+cv::Mat generateRandomImage(int width, int height) {
+  /**
  * @brief Generates a random color image of the specified dimensions.
  *
  * Creates an 8-bit, 3-channel (BGR format by default in OpenCV) image
@@ -45,7 +74,6 @@ pthread_mutex_t listMutex = PTHREAD_MUTEX_INITIALIZER;
  * @return cv::Mat An OpenCV matrix representing the generated random image.
  * Returns an empty cv::Mat if width or height are not positive.
  */
-cv::Mat generateRandomImage(int width, int height) {
   if (width <= 0 || height <= 0) {
     std::cerr << "Error: Image dimensions must be positive." << std::endl;
     return cv::Mat(); // Return an empty Mat to indicate failure
@@ -60,19 +88,8 @@ cv::Mat generateRandomImage(int width, int height) {
   return randomImage;
 }
 
-/**
- * @brief Holds the properties of an image.
- * 
- * This structure defines the basic dimensions of an image, 
- * including its width and height in pixels.
- */
-struct imageProperties
-{
-  int width;
-  int height;
-};
-
-/**
+void* generateLoop(void* args) {
+  /**
  * @brief Generates randoms images and counts FPS.
  * 
  * Creates a primary while loop that sets the timer then a secondary while loop creates the images,
@@ -82,20 +99,21 @@ struct imageProperties
  * @param height The desired height of the image in pixels. Must be positive.
  * @return void*
  */
-void* generateLoop(void* args) {
-  //variables
+
   imageProperties* prop = static_cast<imageProperties*>(args);
   int width = prop -> width;
   int height = prop -> height;
   
   while (1){
-    pthread_mutex_lock(&timeMutex);
-    int temp1 = globalDuration.count();
-    pthread_mutex_unlock(&timeMutex);
-    if (temp1 >= inputDuration) {
+    // Check if the global duration has reached the input duration
+    pthread_mutex_lock(&globalTimeMutex);
+    bool limit_reached = isTimelimitReached;
+    pthread_mutex_unlock(&globalTimeMutex);
+    if (limit_reached) {
       break;
     }
-    
+
+    // Start the timer if it is not running
     pthread_mutex_lock(&timeMutex);
     if (isTimerRunning == false){
       start = std::chrono::system_clock::now();
@@ -107,7 +125,7 @@ void* generateLoop(void* args) {
       cv::Mat myRandomImage = generateRandomImage(width, height); //create Image
 
       pthread_mutex_lock(&listMutex);
-      imagesList.push_back(myRandomImage); //add image to list
+      imagesList.push(myRandomImage); //add image to list
       pthread_mutex_unlock(&listMutex);
 
       pthread_mutex_lock(&framesMutex);
@@ -117,12 +135,12 @@ void* generateLoop(void* args) {
       pthread_mutex_lock(&timeMutex);
       end = std::chrono::system_clock::now();
       duration = std::chrono::duration_cast<std::chrono::seconds> (end - start);
-      float temp2 = duration.count();
+      float frameGen_duration = duration.count();
       pthread_mutex_unlock(&timeMutex);
 
-      if (temp2 >= 1) {
+      if (frameGen_duration >= 1) {
         pthread_mutex_lock(&timeMutex);
-        globalDuration += duration;
+        nowTime += duration; //update time
         pthread_mutex_unlock(&timeMutex);
         break;
       }
@@ -131,7 +149,7 @@ void* generateLoop(void* args) {
     pthread_mutex_lock(&timeMutex);
     if (isTimerRunning == true){
       accumulatedImages += frames;
-      std::cout << "→ Time: " << globalDuration.count() << "s | "
+      std::cout << "→ Time: " << nowTime.count() << "s | "
             << "FPS: " << frames << " | "
             << "Acumulated frames: " << accumulatedImages << std::endl;
       totalFrames += frames;
@@ -145,7 +163,8 @@ void* generateLoop(void* args) {
   return NULL;
 }
 
-/**
+void* saveImage(void* args) {
+  /**
  * @brief Saves images from imagesList.
  * 
  * While loop that writes a file named {$counter}.png wich includes the first image from imagesLists,
@@ -153,24 +172,22 @@ void* generateLoop(void* args) {
  * 
  * @return void*
  */
-void* saveImage(void* args) {
   while (true) {
     cv::Mat image;
 
     pthread_mutex_lock(&listMutex);
     if (imagesList.size() > 0) {
     image = imagesList.front().clone();
-    imagesList.pop_front();  //delete image from list
+    imagesList.pop();  //delete image from list
     }
     pthread_mutex_unlock(&listMutex);
 
     if (!image.empty()){
       try {
-        std::string filename = "./images/" + std::to_string(counter) + ".png";
+        std::string filename = "./images/" + std::to_string(counter) + ".bmp";
         if (cv::imwrite(filename, image)) { // This line won't throw but we use try-catch for safety
           pthread_mutex_lock(&counterMutex);
           counter++;
-          totalBytesWritten += fs::file_size(filename);
           pthread_mutex_unlock(&counterMutex);
         }
       } catch (const cv::Exception& ex) {
@@ -178,29 +195,56 @@ void* saveImage(void* args) {
       }
     }
     
-    pthread_mutex_lock(&timeMutex);
-    float temp = globalDuration.count();
-    pthread_mutex_unlock(&timeMutex);
-    if (temp >= inputDuration) {
-    break;
+    pthread_mutex_lock(&globalTimeMutex);
+    bool limit_reached = isTimelimitReached;
+    pthread_mutex_unlock(&globalTimeMutex);
+    if (limit_reached) {
+      break;
     }
+    
   }
   return NULL;
 }
 
+void* controller(void* args) {
+  /**
+ * @brief Controls the time limit for the image generation.
+ *
+ * This function runs in a separate thread and checks the elapsed time against the input duration.
+ * If the elapsed time exceeds the input duration, it sets a flag to stop the image generation loop.
+ */
+
+  // Start the timer
+  auto globalStart = std::chrono::system_clock::now();
+  while (true) {
+    int globalDuration = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - globalStart).count();
+    if (globalDuration >= inputDuration) {
+      pthread_mutex_lock(&globalTimeMutex);
+      isTimelimitReached = true; // Set the flag to stop the generation loop
+      pthread_mutex_unlock(&globalTimeMutex);
+      break;
+    }
+  } 
+  return NULL;
+}
 
 int main(int argc, char **argv) {
   imageProperties properties = {1920,1080};
-  int threadsNumber;
-  //set input time
+  std::filesystem::create_directory("./images");
+
+  //Console inputs
   if (argc >= 2){
     try {
-
       if (argc >= 4){
         try
         {
           threadsNumber = std::stoi(argv[3]);
-          std::cout <<  "Selected " << threadsNumber << " threads" << std::endl;
+            if (threadsNumber < 3){
+              std::cout << "Threads number must be at least 3, setting to 3.\n";
+              threadsNumber = 3;
+            } else {
+              std::cout <<  "Selected " << threadsNumber << " threads" << std::endl;
+            }
         }
         catch(const std::exception& e)
         {
@@ -234,27 +278,29 @@ int main(int argc, char **argv) {
     }
   }
   else{
-    std::cout << "Selected 2 threads and set 5 seconds.\n";
-    threadsNumber = 2;
+    std::cout << "Selected 3 threads and set 5 seconds.\n";
+    threadsNumber = 3;
     inputDuration = 5;
   }
-  
-  fs::create_directory("./images");
-  
+
   pthread_t threads[threadsNumber];
+
+  //Start the program
   std::cout << "Generating a " << properties.width << "x" << properties.height << " random image..." << std::endl;
+
   pthread_create(&threads[0],nullptr,generateLoop,&properties);  
-  for (int i = 1; i < threadsNumber; i++){
+  pthread_create(&threads[1],nullptr,controller,nullptr);  
+  for (int i = 2; i < threadsNumber; i++){
     pthread_create(&threads[i],nullptr,saveImage,nullptr); 
   }
   for (int i = 0; i < threadsNumber; i++){
     pthread_join(threads[i],nullptr);
   }
 
+  // End of the program
   std::cout << "\n--- SUMMARY ---\n";
   std::cout << "→ Total frames generated: " << accumulatedImages << "\n";
   std::cout << "→ Total time: " << inputDuration << " seconds\n";
   std::cout << "→ FPS estimated mean: "
           << (inputDuration > 0 ? accumulatedImages / inputDuration : 0) << "\n";
-
 }
