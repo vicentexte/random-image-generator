@@ -10,3 +10,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 add_executable(random_image_generator generator.cpp)
 target_link_libraries(random_image_generator ${OpenCV_LIBS})
+
+add_executable(system_check system_check.cpp)
+target_link_libraries(system_check ${OpenCV_LIBS})
+

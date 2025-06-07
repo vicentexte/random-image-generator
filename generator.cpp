@@ -21,10 +21,12 @@
 
 /*Global variables
 */
-  int accumulatedImages = 0; // Total frames generated
+  const int MAX_QUEUE_SIZE = 500; // Maximum size of the imagesList queue
+
+  int totalFrames = 0; // Total frames generated
   int counter = 0; // Counter for saved images
   int frames = 0; // Frames generated in the last second
-  int totalFrames = 0; // Total frames generated during the program execution
+  int lostFrames = 0; // Frames that were not saved due to timing issues
   bool isTimerRunning = false; // Timer status
   bool isTimelimitReached = false; // Timer limit status
 
@@ -125,11 +127,17 @@ void* generateLoop(void* args) {
       cv::Mat myRandomImage = generateRandomImage(width, height); //create Image
 
       pthread_mutex_lock(&listMutex);
-      imagesList.push(myRandomImage); //add image to list
+      if (imagesList.size() < MAX_QUEUE_SIZE) { // Check if the queue is not full
+        imagesList.push(myRandomImage); //add image to list
+      } else {
+        pthread_mutex_lock(&framesMutex);
+        lostFrames += 1; //+1 lost frame
+        pthread_mutex_unlock(&framesMutex);
+      }
       pthread_mutex_unlock(&listMutex);
 
       pthread_mutex_lock(&framesMutex);
-      frames += 1;                          //+1 frame
+      frames += 1; //+1 frame
       pthread_mutex_unlock(&framesMutex);
       
       pthread_mutex_lock(&timeMutex);
@@ -148,11 +156,11 @@ void* generateLoop(void* args) {
     pthread_mutex_lock(&framesMutex);
     pthread_mutex_lock(&timeMutex);
     if (isTimerRunning == true){
-      accumulatedImages += frames;
+      totalFrames += frames;
       std::cout << "→ Time: " << nowTime.count() << "s | "
             << "FPS: " << frames << " | "
-            << "Acumulated frames: " << accumulatedImages << std::endl;
-      totalFrames += frames;
+            << "Acumulated frames: " << totalFrames << " | "
+            << "Losted frames: " << lostFrames << std::endl;
       frames = 0;
       isTimerRunning = false;
     }
@@ -184,15 +192,18 @@ void* saveImage(void* args) {
 
     if (!image.empty()){
       try {
-        std::string filename = "./images/" + std::to_string(counter) + ".bmp";
-        if (cv::imwrite(filename, image)) { // This line won't throw but we use try-catch for safety
-          pthread_mutex_lock(&counterMutex);
-          counter++;
-          pthread_mutex_unlock(&counterMutex);
+        pthread_mutex_lock(&counterMutex);
+        int this_counter = counter; // Get the current counter value
+        counter++;
+        pthread_mutex_unlock(&counterMutex);
+        std::string filename = "./images/" + std::to_string(this_counter) + ".sr";
+        if (!cv::imwrite(filename, image)) { // This line won't throw but we use try-catch for safety
+          std::cerr << "Failed to save image: " << filename << std::endl;
         }
       } catch (const cv::Exception& ex) {
         std::cerr << "Failed to save image: " << ex.what() << std::endl;
       }
+    } else {usleep(10000); // If no image is available, wait a bit before checking again
     }
     
     pthread_mutex_lock(&globalTimeMutex);
@@ -298,9 +309,10 @@ int main(int argc, char **argv) {
   }
 
   // End of the program
-  std::cout << "\n--- SUMMARY ---\n";
-  std::cout << "→ Total frames generated: " << accumulatedImages << "\n";
-  std::cout << "→ Total time: " << inputDuration << " seconds\n";
-  std::cout << "→ FPS estimated mean: "
-          << (inputDuration > 0 ? accumulatedImages / inputDuration : 0) << "\n";
+  std::cout << "\n--- SUMMARY ---\n"
+        << "→ Total frames generated: " << totalFrames << "\n"
+        << "→ Total time: " << inputDuration << " seconds\n"
+        << "→ Total frames saved: " << counter << "\n"
+        << "→ Total frames in queue: " << imagesList.size() << "\n"
+        << "→ Total frames not queued: " << lostFrames << "\n";
 }
