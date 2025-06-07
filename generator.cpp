@@ -45,7 +45,6 @@
 
 /*Mutexes
 */
-
   pthread_mutex_t globalTimeMutex = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_t timeMutex = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_t framesMutex = PTHREAD_MUTEX_INITIALIZER;
