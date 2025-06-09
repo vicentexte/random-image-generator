@@ -22,5 +22,5 @@ make
 ```
 ./random-image-generator [Unidad de tiempo] [Cantidad de tiempo] [Cantidad de hilos] [Formato]
 ```
-Unidades de tiempo -> s: segundos, m: minutos, h:horas
-Formatos disponibles -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw
+- Unidades de tiempo -> s: segundos, m: minutos, h:horas
+- Formatos disponibles -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw
