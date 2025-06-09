@@ -24,3 +24,9 @@ make
 ```
 - Unidades de tiempo -> s: segundos, m: minutos, h:horas
 - Formatos disponibles -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw
+
+## Checkear el sistema
+Para ejecutar el código principal, se recomienda utilizar el siguiente código con el fin de aplicar los ajustes necesarios al código principal
+```
+./system_check
+```
