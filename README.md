@@ -20,16 +20,7 @@ make
 ## Uso
 
 ```
-./random-image-generator
+./random-image-generator [Unidad de tiempo] [Cantidad de tiempo] [Cantidad de hilos] [Formato]
 ```
-## Opciones
-### Ajustar tiempo de procesamiento
-```
-./random-image-generator m 5
-```
-En este caso se estableció 5 minutos de duración (s: segundos, m: minutos, h: horas).
-### Ajustar hilos usados
-```
-./random-image-generator m 5 5 //Se establecen 5 hilos
-```
-El tercer argumento corresponde a la cantidad de hilos que desea usar.
+Unidades de tiempo -> s: segundos, m: minutos, h:horas
+Formatos disponibles -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw

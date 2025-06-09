@@ -7,6 +7,9 @@
 #include <opencv2/highgui.hpp>
 #include <filesystem>
 #include <iomanip>
+#ifndef system_check_h
+#define system_check_h
+
 
 /*
 * @file system_check.cpp
@@ -15,6 +18,9 @@
 * This program provides functions to check if the system is running in WSL,
 * check available disk space, available RAM, save images in various formats,
 * and calculate disk write speed for different image formats.
+
+* It also provides a function to choose the best image format based on disk write speed
+* and available disk space.
 */
 
 
@@ -187,14 +193,21 @@ void chooseFormat(int duration, int minimunImages){
      * @param minimunImages The minimum number of images to be saved per second.
      */
     std::vector<imageInfo> image_info = calculateDiskWriteSpeed(1080, 1920);
+    long long freeSpace = isWSL() ? checkDiskSpace("/mnt/c") : checkDiskSpace("./");
+    long long freeRam = checkAvailableRam();
     for (int i = 0; i < image_info.size(); i++){
-        if (minimunImages*duration*image_info[i].file_size < isWSL() ? checkDiskSpace("/mnt/c") : checkDiskSpace("./")
-            && 1000/image_info[i].writing_time > minimunImages) { // Check if the format is suitable
-            std::cout << "You can use the format: " << image_info[i].format << std::endl;
+        if (minimunImages*duration*image_info[i].file_size < freeSpace
+            && 1000000/image_info[i].writing_time > minimunImages) { // Check if the format is suitable
+            std::cout << "You can use the format: " << image_info[i].format << std::endl
+            << "Your maximum queue size is: " << freeRam/image_info[i].file_size << std::endl;
+            
             return; // Exit after finding the first suitable format
         }
     }
+    std::cout << "No suitable format found for the given duration and minimum images per second." << std::endl;
 }
+#endif // system_check_h
+
 int main(int argc, char **argv) {
     chooseFormat(60, 50); // Example usage with 60 seconds duration and 50 images per second
     return 0;

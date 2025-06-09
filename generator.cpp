@@ -23,7 +23,7 @@
 
 /*Global variables
 */
-  const int MAX_QUEUE_SIZE = 1500; // Maximum size of the imagesList queue
+  const int MAX_QUEUE_SIZE = 500; // Maximum size of the imagesList queue
 
   int totalFrames = 0; // Total frames generated
   int counter = 0; // Counter for saved images
@@ -152,6 +152,7 @@ void* generateLoop(void* args) {
         pthread_mutex_lock(&timeMutex);
         nowTime += duration; //update time
         pthread_mutex_unlock(&timeMutex);
+        usleep(100000); // Sleep for 100 ms to avoid busy waiting
         break;
       }
     }
@@ -207,7 +208,7 @@ void* saveImage(void* args) {
       } catch (const cv::Exception& ex) {
         std::cerr << "Failed to save image: " << ex.what() << std::endl;
       }
-    } else {usleep(10000); // If no image is available, wait a bit before checking again
+    } else {usleep(1000); // If no image is available, wait a bit before checking again
     }
     
     pthread_mutex_lock(&globalTimeMutex);
@@ -257,9 +258,8 @@ void* saveImageRaw(void* args) {
       } catch (const std::exception& ex) {
         std::cerr << "Failed to save image: " << ex.what() << std::endl;
       }
-    } else {usleep(10000); // If no image is available, wait a bit before checking again
+    } else {usleep(1000); // If no image is available, wait a bit before checking again
     }
-
     pthread_mutex_lock(&globalTimeMutex);
     bool limit_reached = isTimelimitReached;
     pthread_mutex_unlock(&globalTimeMutex);
@@ -289,6 +289,7 @@ void* controller(void* args) {
       pthread_mutex_unlock(&globalTimeMutex);
       break;
     }
+    usleep(100000); // Sleep for 100 milliseconds to avoid busy waiting
   } 
   return NULL;
 }
@@ -382,5 +383,6 @@ int main(int argc, char **argv) {
         << "→ Total time: " << inputDuration << " seconds\n"
         << "→ Total frames saved: " << counter << "\n"
         << "→ Total frames in queue: " << imagesList.size() << "\n"
-        << "→ Total frames not queued: " << lostFrames << "\n";
+        << "→ Total frames not queued: " << lostFrames << "\n"
+        << "Timer might not be accurate due to the multithreading nature of the program.\n";
 }
