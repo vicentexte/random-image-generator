@@ -6,6 +6,8 @@
 #include <queue>
 #include <unistd.h> 
 #include <filesystem>
+#include <fstream>
+#include <cstring>
 /**
  * @file generator.cpp
  * @brief Generates random images and saves them to disk using multiple threads.
@@ -21,7 +23,7 @@
 
 /*Global variables
 */
-  const int MAX_QUEUE_SIZE = 500; // Maximum size of the imagesList queue
+  const int MAX_QUEUE_SIZE = 1500; // Maximum size of the imagesList queue
 
   int totalFrames = 0; // Total frames generated
   int counter = 0; // Counter for saved images
@@ -29,6 +31,7 @@
   int lostFrames = 0; // Frames that were not saved due to timing issues
   bool isTimerRunning = false; // Timer status
   bool isTimelimitReached = false; // Timer limit status
+  const char* imageFormat;// Image format for saving
 
   // Input parameters
   int inputDuration; // Duration for which the program will run, (default 5 seconds)
@@ -159,6 +162,8 @@ void* generateLoop(void* args) {
       std::cout << "→ Time: " << nowTime.count() << "s | "
             << "FPS: " << frames << " | "
             << "Acumulated frames: " << totalFrames << " | "
+            << "Saved frames: " << counter << " | "
+            << "Frames in queue: " << imagesList.size() << " | "
             << "Losted frames: " << lostFrames << std::endl;
       frames = 0;
       isTimerRunning = false;
@@ -195,7 +200,7 @@ void* saveImage(void* args) {
         int this_counter = counter; // Get the current counter value
         counter++;
         pthread_mutex_unlock(&counterMutex);
-        std::string filename = "./images/" + std::to_string(this_counter) + ".sr";
+        std::string filename = "./images/" + std::to_string(this_counter) + imageFormat; // Use the specified image format
         if (!cv::imwrite(filename, image)) { // This line won't throw but we use try-catch for safety
           std::cerr << "Failed to save image: " << filename << std::endl;
         }
@@ -205,6 +210,56 @@ void* saveImage(void* args) {
     } else {usleep(10000); // If no image is available, wait a bit before checking again
     }
     
+    pthread_mutex_lock(&globalTimeMutex);
+    bool limit_reached = isTimelimitReached;
+    pthread_mutex_unlock(&globalTimeMutex);
+    if (limit_reached) {
+      break;
+    }
+    
+  }
+  return NULL;
+}
+
+void* saveImageRaw(void* args) {
+  /**
+ * @brief Saves images from imagesList in raw format.
+ * 
+ * While loop that writes a file named {$counter}.raw wich includes the first image from imagesLists,
+ * increments counter, and pop the image from the list.
+ * 
+ * @return void*
+ */
+  while (true) {
+    cv::Mat image;
+
+    pthread_mutex_lock(&listMutex);
+    if (imagesList.size() > 0) {
+      image = imagesList.front().clone();
+      imagesList.pop();  //delete image from list
+    }
+    pthread_mutex_unlock(&listMutex);
+
+    if (!image.empty()){
+      try {
+        pthread_mutex_lock(&counterMutex);
+        int this_counter = counter; // Get the current counter value
+        counter++;
+        pthread_mutex_unlock(&counterMutex);
+        std::string filename = "./images/" + std::to_string(this_counter) + ".raw";
+        std::ofstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+          std::cerr << "Failed to open file for writing: " << filename << std::endl;
+          continue;
+        }
+        file.write(reinterpret_cast<const char*>(image.data), image.total() * image.elemSize());
+        file.close();
+      } catch (const std::exception& ex) {
+        std::cerr << "Failed to save image: " << ex.what() << std::endl;
+      }
+    } else {usleep(10000); // If no image is available, wait a bit before checking again
+    }
+
     pthread_mutex_lock(&globalTimeMutex);
     bool limit_reached = isTimelimitReached;
     pthread_mutex_unlock(&globalTimeMutex);
@@ -243,54 +298,68 @@ int main(int argc, char **argv) {
   std::filesystem::create_directory("./images");
 
   //Console inputs
-  if (argc >= 2){
-    try {
-      if (argc >= 4){
-        try
-        {
-          threadsNumber = std::stoi(argv[3]);
-            if (threadsNumber < 3){
-              std::cout << "Threads number must be at least 3, setting to 3.\n";
-              threadsNumber = 3;
-            } else {
-              std::cout <<  "Selected " << threadsNumber << " threads" << std::endl;
-            }
+  if (argc >= 5){
+    try{
+      threadsNumber = std::stoi(argv[3]);
+        if (threadsNumber < 3){
+          std::cout << "Threads number must be at least 3, setting to 3.\n";
+          threadsNumber = 3;
+        } else {
+          std::cout <<  "Selected " << threadsNumber << " threads" << std::endl;
         }
-        catch(const std::exception& e)
-        {
-          std::cerr << e.what() << '\n';
-        }
+      imageFormat = argv[4];
+        if (
+            (strcmp(imageFormat, ".bmp") != 0 &&
+            strcmp(imageFormat, ".dib") != 0 &&
+            strcmp(imageFormat, ".jpeg") != 0 &&
+            strcmp(imageFormat, ".jpg") != 0 &&
+            strcmp(imageFormat, ".jpe") != 0 &&
+            strcmp(imageFormat, ".png") != 0 &&
+            strcmp(imageFormat, ".ppm") != 0 &&
+            strcmp(imageFormat, ".sr") != 0 &&
+            strcmp(imageFormat, ".ras") != 0 &&
+            strcmp(imageFormat, ".tiff") != 0 &&
+            strcmp(imageFormat, ".tif") != 0 &&
+            strcmp(imageFormat, ".hdr") != 0 &&
+            strcmp(imageFormat, ".raw") != 0) || 
+            (imageFormat[0] != '.')
+        ){
+        std::cout << "Invalid image format, closing program.\n"
+                  << "Valid formats: .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw\n";
+        close(0); // Exit the program if an invalid image format is provided
+        return 1;
+      } else {
+        std::cout << "Selected image format: " << imageFormat << std::endl;
       }
-      // m minutes, s seconds, h hours
-      inputDuration = std::stoi(argv[2]);
-      switch (*argv[1])
-      {
-      case 's':
-        std::cout << "Set " << inputDuration << " seconds." << std::endl;
-        break;
-      case 'm':
-        std::cout << "Set " << inputDuration << " minutes." << std::endl;
-        inputDuration *= 60;
-        break;
-      case 'h':
-        std::cout << "Set " << inputDuration << " hours." << std::endl;
-        inputDuration *= 3600;
-        break;
-      default:
-        std::cout << "Set 5 seconds.\n";
-        inputDuration = 5;
-        break;
-      }
+    }catch(const std::exception& e){
+      std::cerr << e.what() << '\n';
     }
-    catch(...){
-      std::cerr << "Invalid input. Set 5 seconds.\n";
+    // m minutes, s seconds, h hours
+    inputDuration = std::stoi(argv[2]);
+    switch (*argv[1])
+    {
+    case 's':
+      std::cout << "Set " << inputDuration << " seconds." << std::endl;
+      break;
+    case 'm':
+      std::cout << "Set " << inputDuration << " minutes." << std::endl;
+      inputDuration *= 60;
+      break;
+    case 'h':
+      std::cout << "Set " << inputDuration << " hours." << std::endl;
+      inputDuration *= 3600;
+      break;
+    default:
+      std::cout << "Set 5 seconds.\n";
       inputDuration = 5;
+      break;
     }
-  }
-  else{
-    std::cout << "Selected 3 threads and set 5 seconds.\n";
-    threadsNumber = 3;
-    inputDuration = 5;
+  } else {
+    std::cout << "Insufficient arguments provided.\n"
+              << "Usage: ./generator [time_unit] [duration] [threads_number] [image_format]\n"
+              << "Example: ./generator s 5 3 .png\n";
+    close(0); // Exit the program if not enough arguments are provided
+    return 1;
   }
 
   pthread_t threads[threadsNumber];
@@ -301,7 +370,7 @@ int main(int argc, char **argv) {
   pthread_create(&threads[0],nullptr,generateLoop,&properties);  
   pthread_create(&threads[1],nullptr,controller,nullptr);  
   for (int i = 2; i < threadsNumber; i++){
-    pthread_create(&threads[i],nullptr,saveImage,nullptr); 
+    pthread_create(&threads[i],nullptr, strcmp(imageFormat, ".raw") ? saveImage : saveImageRaw ,nullptr); 
   }
   for (int i = 0; i < threadsNumber; i++){
     pthread_join(threads[i],nullptr);
