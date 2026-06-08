@@ -1,13 +1,13 @@
 # Random Image Generator
 
-Generador de imágenes aleatorias escrito en C++.
+Random image generator written in C++.
 
-## Requisitos
+## Requirements
 
-- CMake 3.10 o superior
-- Compilador C++ compatible con C++11 (g++, clang, etc.)
+* CMake 3.10 or higher
+* C++11 compatible compiler (g++, clang, etc.)
 
-## Compilación
+## Build
 
 ```bash
 git clone https://github.com/vicentexte/random-image-generator.git
@@ -17,16 +17,19 @@ cmake ..
 make
 ```
 
-## Uso
+## Usage
 
+```bash
+./random-image-generator [Time unit] [Time amount] [Thread count] [Format]
 ```
-./random-image-generator [Unidad de tiempo] [Cantidad de tiempo] [Cantidad de hilos] [Formato]
-```
-- Unidades de tiempo -> s: segundos, m: minutos, h:horas
-- Formatos disponibles -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw
 
-## Checkear el sistema
-Para ejecutar el código principal, se recomienda utilizar el siguiente código con el fin de aplicar los ajustes necesarios al código principal
-```
+* Time units -> s: seconds, m: minutes, h: hours
+* Available formats -> .bmp, .dib, .jpeg, .jpg, .jpe, .png, .ppm, .sr, .ras, .tiff, .tif, .hdr, .raw
+
+## System Check
+
+To run the main program, it is recommended to execute the following command first in order to apply the necessary adjustments for the main code:
+
+```bash
 ./system_check
 ```
